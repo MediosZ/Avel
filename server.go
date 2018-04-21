@@ -5,6 +5,7 @@ import (
 	"sync"
 	"fmt"
 	"html"
+	"encoding/json"
 )
 
 type Context struct {
@@ -12,8 +13,25 @@ type Context struct {
 	request *http.Request
 }
 
+// Form -> application/x-www-form-urlencoded && query
+// PostForm -> application/x-www-form-urlencoded
+//ParseMultipartForm(int) -> MultipartForm -> form-data
 func (c *Context) Send(i interface{}){
-	fmt.Fprintf(c.writer, "something")
+	c.request.ParseForm()
+	fmt.Fprintln(c.writer, c.request.Form)
+	//type switch
+	switch v := i.(type) {
+	case int:
+		fmt.Fprintln(c.writer, v)
+	case string:
+		fmt.Fprintln(c.writer, v)
+	default:{
+		if jsondata,err := json.Marshal(i); err != nil{
+			fmt.Fprintln(c.writer, "something was wrong")
+		} else {
+			fmt.Fprintln(c.writer, string(jsondata))
+		}}
+	}
 }
 
 type Handler func (c *Context)
@@ -62,6 +80,15 @@ func (m Mux) ServeHTTP(w http.ResponseWriter, r *http.Request){
 		me.h.ServeHTTP(w, r)
 	}
 
+}
+
+func Json(i interface{}) string{
+	jsondata, err := json.Marshal(i)
+	if err != nil{
+		return "something was wrong"
+	} else{
+		return string(jsondata)
+	}
 }
 
 func (mu *Mux) Get(pattern string, fn func(c *Context)){

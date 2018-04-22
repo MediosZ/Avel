@@ -52,18 +52,14 @@ func main(){
 		c.Send(string(jsondata))
 	})
 	mux.Post("/json", func (c *Context){
-		/*defer c.request.Body.Close()
-		con, _ := ioutil.ReadAll(c.request.Body) //get data from post body
-		fmt.Fprintln(c.writer, string(con))
-		datafromjson := new(Somedata)
-		json.Unmarshal([]byte(con), &datafromjson)
-		fmt.Fprintln(c.writer, datafromjson)*/
-		data := `[{"level":"debug","msg":"File Not Found","author":"Cynhard"},` +
-			`{"level":"","msg":"Logic error","author":"Gopher"}]`
+		defer c.request.Body.Close()
 
-		var dbgInfos []DebugInfo
-		json.Unmarshal([]byte(data), &dbgInfos)
-		fmt.Println(dbgInfos)
+		//respbody := make(map[string]interface{})
+		sdata := new(Somedata)
+		//对返回的结果response进行json解码，可以利用map[string]interface{} 通用的格式存放解码后的值，或者使用具体的response的返回的信息，构建一个结构体，来存放解析后的返回值
+		json.NewDecoder(c.request.Body).Decode(&sdata)
+		fmt.Fprintf(c.writer, "%+v", sdata.Data)
+
 	})
 	mux.Post("/mhandle", func (c *Context){
 		fmt.Fprintf(c.writer, "post context test, %q", html.EscapeString(c.request.URL.Path))

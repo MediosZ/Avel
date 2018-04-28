@@ -33,6 +33,25 @@ func main(){
 	sdd := Somedata{Data: "hello world",Desp: "this is a test data"}
 	jsondata, _ := json.Marshal(deb)
 	mux := NewMux()
+
+	mux.Use(func (c *Context){
+		c.Send("hello, this is a middleware")
+		c.Next()
+		c.Send("after next func")
+	})
+
+	mux.Use(func (c *Context){
+		c.Send("hello, this is a middleware2")
+		c.Next()
+		c.Send("after next2")
+	})
+
+	mux.Use(func (c *Context){
+		c.Send("hello, this is a middleware3")
+		c.Next()
+		c.Send("after next3")
+	})
+
 	mux.Get("/", func (c *Context){
 		fmt.Fprintf(c.writer, "Welcome to Avel Server, go look around if you like. \n")
 	})
@@ -52,14 +71,8 @@ func main(){
 		c.Send(string(jsondata))
 	})
 	mux.Post("/json", func (c *Context){
-		defer c.request.Body.Close()
-
-		//respbody := make(map[string]interface{})
-		sdata := new(Somedata)
-		//对返回的结果response进行json解码，可以利用map[string]interface{} 通用的格式存放解码后的值，或者使用具体的response的返回的信息，构建一个结构体，来存放解析后的返回值
-		json.NewDecoder(c.request.Body).Decode(&sdata)
-		fmt.Fprintf(c.writer, "%+v", sdata.Data)
-
+		respbody := Decode(c.request.Body)
+		fmt.Fprintf(c.writer, "%+v", respbody)
 	})
 	mux.Post("/mhandle", func (c *Context){
 		fmt.Fprintf(c.writer, "post context test, %q", html.EscapeString(c.request.URL.Path))

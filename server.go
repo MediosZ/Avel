@@ -11,6 +11,8 @@ import (
 type Context struct {
 	writer http.ResponseWriter
 	request *http.Request
+	handlers []Hand
+	index int
 }
 
 // Form -> application/x-www-form-urlencoded && query
@@ -18,7 +20,7 @@ type Context struct {
 //ParseMultipartForm(int) -> MultipartForm -> form-data
 func (c *Context) Send(i interface{}){
 	c.request.ParseForm()
-	fmt.Fprintln(c.writer, c.request.Form)
+	//fmt.Fprintln(c.writer, c.request.Form)
 	//type switch
 	switch v := i.(type) {
 	case int:
@@ -34,15 +36,47 @@ func (c *Context) Send(i interface{}){
 	}
 }
 
+func (c *Context) Next(){
+	if((c.index + 1) < len(c.handlers)) {
+		c.index += 1
+		c.handlers[c.index].ServeHTTP(c.writer, c.request)
+	}else {
+		return
+	}
+}
+
+func (c *Context) run(){
+	c.index = 0
+	for c.index < len(c.handlers){
+		c.handlers[c.index].ServeHTTP(c.writer, c.request)
+		c.index += 1
+	}
+}
+
+
+type Hand struct{
+	h Handler
+	ctx *Context
+}
+
 type Handler func (c *Context)
+
+func (h Hand) ServeHTTP(w http.ResponseWriter, r *http.Request){
+	h.ctx.writer = w
+	h.ctx.request = r
+	defer r.Body.Close()
+	h.h(h.ctx)
+}
 
 func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request){
 	c := Context{
 		writer: w,
 		request: r,
 	}
+	defer r.Body.Close()
 	h(&c)
 }
+
 
 type MuxEntry struct{
 	method string
@@ -55,6 +89,14 @@ type MethodGroup map[string]MuxEntry
 type Mux struct{
 	mu sync.RWMutex
 	ma map[string]MethodGroup
+	ctx *Context
+}
+
+func (m *Mux) Use(fn func(c *Context)){
+	m.ctx.handlers = append(m.ctx.handlers, Hand{
+		h: Handler(fn),
+		ctx: m.ctx,
+	})
 }
 
 func NewMux() *Mux{
@@ -65,11 +107,20 @@ func NewMux() *Mux{
 		"PUT": make(map[string]MuxEntry),
 		"DELETE": make(map[string]MuxEntry),
 	}
+	mux.ctx = &Context{
+		handlers: make([]Hand, 0),
+		index: 0,
+	}
 	return mux
 }
 
-func (m Mux) ServeHTTP(w http.ResponseWriter, r *http.Request){
+func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request){
+	m.ctx.writer = w
+	m.ctx.request = r
 	method := r.Method
+
+	m.ctx.run()
+
 	if me, ok := m.ma[method][r.URL.Path]; !ok {
 		mh := Handler(func(c *Context){
 			fmt.Fprintf(c.writer, "Hello, but there is no handler for %q \n", html.EscapeString(c.request.URL.Path))
@@ -82,14 +133,7 @@ func (m Mux) ServeHTTP(w http.ResponseWriter, r *http.Request){
 
 }
 
-func Json(i interface{}) string{
-	jsondata, err := json.Marshal(i)
-	if err != nil{
-		return "something was wrong"
-	} else{
-		return string(jsondata)
-	}
-}
+
 
 func (mu *Mux) Get(pattern string, fn func(c *Context)){
 	mue := MuxEntry{

@@ -1,7 +1,6 @@
-package main
+package avel
 
 import (
-	"net/http"
 	"fmt"
 	"html"
 	"encoding/json"
@@ -24,7 +23,25 @@ type DebugInfo struct {
 }
 
 
-func main(){
+func func1 (c *Context){
+	c.Send("hello, this is a middleware111")
+	c.Next()
+	c.Send("after next func111")
+}
+
+func func2 (c *Context){
+	c.Send("hello, this is a middleware2222")
+	c.Next()
+	c.Send("after next2222")
+}
+
+func func3 (c *Context){
+	c.Send("hello, this is a middleware3333")
+	c.Next()
+	c.Send("after next3333")
+}
+
+func test(){
 	deb := DebugInfo{
 		Level: "top",
 		Msg: "hello there",
@@ -55,6 +72,8 @@ func main(){
 	mux.Get("/", func (c *Context){
 		fmt.Fprintf(c.writer, "Welcome to Avel Server, go look around if you like. \n")
 	})
+	mux.Get("/mid",func1,func2,func3)
+
 	mux.Get("/mhandle", func (c *Context){
 		fmt.Fprintf(c.writer, "context test, %q", html.EscapeString(c.request.URL.Path))
 	})
@@ -77,5 +96,5 @@ func main(){
 	mux.Post("/mhandle", func (c *Context){
 		fmt.Fprintf(c.writer, "post context test, %q", html.EscapeString(c.request.URL.Path))
 	})
-	http.ListenAndServe(":8080", mux)
+	mux.Listen()
 }

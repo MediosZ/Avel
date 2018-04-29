@@ -1,4 +1,4 @@
-package main
+package avel
 
 import (
 	"net/http"
@@ -20,7 +20,6 @@ type Context struct {
 //ParseMultipartForm(int) -> MultipartForm -> form-data
 func (c *Context) Send(i interface{}){
 	c.request.ParseForm()
-	//fmt.Fprintln(c.writer, c.request.Form)
 	//type switch
 	switch v := i.(type) {
 	case int:
@@ -35,6 +34,8 @@ func (c *Context) Send(i interface{}){
 		}}
 	}
 }
+
+//这里传递的context其实是Hand.ctx
 
 func (c *Context) Next(){
 	if((c.index + 1) < len(c.handlers)) {
@@ -59,14 +60,14 @@ type Hand struct{
 	ctx *Context
 }
 
-type Handler func (c *Context)
-
-func (h Hand) ServeHTTP(w http.ResponseWriter, r *http.Request){
+func (h *Hand) ServeHTTP(w http.ResponseWriter, r *http.Request){
 	h.ctx.writer = w
 	h.ctx.request = r
 	defer r.Body.Close()
 	h.h(h.ctx)
 }
+
+type Handler func (c *Context)
 
 func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request){
 	c := Context{
@@ -81,22 +82,23 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request){
 type MuxEntry struct{
 	method string
 	pat string
-	h http.Handler
+	ctx *Context
+
+}
+
+func (me *MuxEntry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	me.ctx.writer = w
+	me.ctx.request = r
+	me.ctx.run()
 }
 
 type MethodGroup map[string]MuxEntry
 
+// Mux is main Route
 type Mux struct{
 	mu sync.RWMutex
 	ma map[string]MethodGroup
 	ctx *Context
-}
-
-func (m *Mux) Use(fn func(c *Context)){
-	m.ctx.handlers = append(m.ctx.handlers, Hand{
-		h: Handler(fn),
-		ctx: m.ctx,
-	})
 }
 
 func NewMux() *Mux{
@@ -114,6 +116,20 @@ func NewMux() *Mux{
 	return mux
 }
 
+func (m *Mux) Use(fn func(c *Context)){
+	m.ctx.handlers = append(m.ctx.handlers, Hand{
+		h: Handler(fn),
+		ctx: m.ctx,
+	})
+}
+
+func (m *Mux) UseAll(fnarr []func(c *Context)){
+	for _, fn := range fnarr{
+		m.Use(fn)
+	}
+}
+
+
 func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request){
 	m.ctx.writer = w
 	m.ctx.request = r
@@ -128,46 +144,90 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request){
 		})
 		mh.ServeHTTP(w, r)
 	} else{
-		me.h.ServeHTTP(w, r)
+		me.ServeHTTP(w, r)
 	}
 
 }
 
 
-
-func (mu *Mux) Get(pattern string, fn func(c *Context)){
+func (mu *Mux) Get(pattern string, fns ...func(c *Context)){
 	mue := MuxEntry{
 		method: "GET",
 		pat: pattern,
-		h: Handler(fn),
+		ctx: &Context{
+			handlers: make([]Hand, 0),
+			index: 0,
+		},
 	}
+	for _, fn := range fns{
+		mue.ctx.handlers = append(mue.ctx.handlers, Hand{
+			h: Handler(fn),
+			ctx: mue.ctx,
+		})
+	}
+
 	mu.ma["GET"][pattern] = mue
 }
 
-func (mu *Mux) Post(pattern string, fn func(c *Context)){
+func (mu *Mux) Post(pattern string, fns ...func(c *Context)){
 	mue := MuxEntry{
 		method: "POST",
 		pat: pattern,
-		h: Handler(fn),
+		ctx: &Context{
+			handlers: make([]Hand, 0),
+			index: 0,
+		},
+	}
+	for _, fn := range fns{
+		mue.ctx.handlers = append(mue.ctx.handlers, Hand{
+			h: Handler(fn),
+			ctx: mue.ctx,
+		})
 	}
 	mu.ma["POST"][pattern] = mue
 }
 
-func (mu *Mux) Put(pattern string, fn func(c *Context)){
+func (mu *Mux) Put(pattern string, fns ...func(c *Context)){
 	mue := MuxEntry{
 		method: "PUT",
 		pat: pattern,
-		h: Handler(fn),
+		ctx: &Context{
+			handlers: make([]Hand, 0),
+			index: 0,
+		},
+	}
+	for _, fn := range fns{
+		mue.ctx.handlers = append(mue.ctx.handlers, Hand{
+			h: Handler(fn),
+			ctx: mue.ctx,
+		})
 	}
 	mu.ma["Put"][pattern] = mue
 }
 
-func (mu *Mux) Delete(pattern string, fn func(c *Context)){
+func (mu *Mux) Delete(pattern string, fns ...func(c *Context)){
 	mue := MuxEntry{
 		method: "DELETE",
 		pat: pattern,
-		h: Handler(fn),
+		ctx: &Context{
+			handlers: make([]Hand, 0),
+			index: 0,
+		},
+	}
+	for _, fn := range fns{
+		mue.ctx.handlers = append(mue.ctx.handlers, Hand{
+			h: Handler(fn),
+			ctx: mue.ctx,
+		})
 	}
 	mu.ma["DELETE"][pattern] = mue
+}
+
+func (m *Mux) ListenAt(port string){
+	http.ListenAndServe(port, m)
+}
+
+func (m *Mux) Listen(){
+	http.ListenAndServe(":8080", m)
 }
 
